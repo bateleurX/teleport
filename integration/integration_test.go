@@ -1219,10 +1219,20 @@ func runDisconnectTest(t *testing.T, suite *integrationTestSuite, tc disconnectT
 				return
 			default:
 			}
+
+			isSSHError := func(e error) bool {
+				switch trace.Unwrap(err).(type) {
+				case *ssh.ExitError, *ssh.ExitMissingError:
+					return true
+				default:
+					return false
+				}
+			}
+
 			if tc.assertExpected != nil {
 				tc.assertExpected(t, err)
-			} else if err != nil && !trace.IsEOF(err) {
-				require.FailNowf(t, "Missing EOF", "expected EOF or nil, got %v instead", err)
+			} else if err != nil && !trace.IsEOF(err) && !isSSHError(err) {
+				require.FailNowf(t, "Missing EOF", "expected EOF, ExitError, or nil, got %v instead", err)
 			}
 		}
 

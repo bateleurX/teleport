@@ -1933,11 +1933,17 @@ func (tc *TeleportClient) runShell(nodeClient *NodeClient, sessToJoin *session.S
 		return trace.Wrap(err)
 	}
 	if err = nodeSession.runShell(tc.OnShellCreated); err != nil {
-		originErr := trace.Unwrap(err)
-		exitErr, ok := originErr.(*ssh.ExitError)
-		if ok {
-			tc.ExitStatus = exitErr.ExitStatus()
+		switch e := trace.Unwrap(err).(type) {
+		case *ssh.ExitError:
+			tc.ExitStatus = e.ExitStatus()
+			break
+		case *ssh.ExitMissingError:
+			tc.ExitStatus = 1
+			break
+		default:
+			break
 		}
+
 		return trace.Wrap(err)
 	}
 	if nodeSession.ExitMsg == "" {
