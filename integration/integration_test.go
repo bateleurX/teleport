@@ -4813,13 +4813,29 @@ func testSSHExitCode(t *testing.T, suite *integrationTestSuite) {
 			errorAssertion: require.Error,
 			statusCode:     3,
 		},
+		// A failed interactive session should have a non-zero status code
+		{
+			desc:           "Interactively Fail With Code 3",
+			input:          fmt.Sprintf("%v\n\rexit 3\n\r", lsPath),
+			interactive:    true,
+			errorAssertion: require.Error,
+			statusCode:     3,
+		},
 		// A successful interactive session should have a zero status code
 		{
-			desc:           "Interactively Exist Successfully",
+			desc:           "Interactively Run Command and Exit Successfully",
 			input:          fmt.Sprintf("%v\n\rexit\n\r", lsPath),
 			interactive:    true,
 			errorAssertion: require.NoError,
 			statusCode:     0,
+		},
+		// A successful interactive session should have a zero status code
+		{
+			desc:           "Interactively Exit",
+			input:          "exit\n\r",
+			interactive:    true,
+			errorAssertion: require.NoError,
+			statusCode:     -100,
 		},
 	}
 
@@ -4845,14 +4861,12 @@ func testSSHExitCode(t *testing.T, suite *integrationTestSuite) {
 				return t, nil, nil, tconf
 			}
 			main := suite.newTeleportWithConfig(makeConfig())
-			defer main.StopAll()
+			t.Cleanup(func() { main.StopAll() })
 
 			// context to signal when the client is done with the terminal.
-			failedContext, failedCancel := context.WithTimeout(context.Background(), time.Second*10)
-			defer failedCancel()
-			doneContext, doneCancel := context.WithCancel(context.Background())
+			doneContext, doneCancel := context.WithTimeout(context.Background(), time.Second*10)
 
-			go func() {
+			func() {
 				cli, err := main.NewClient(t, ClientConfig{
 					Login:       suite.me.Username,
 					Cluster:     Site,
@@ -4870,33 +4884,20 @@ func testSSHExitCode(t *testing.T, suite *integrationTestSuite) {
 					term.Type(tt.input)
 				}
 
+				// run the ssh command
 				err = cli.SSH(doneContext, tt.command, false)
-				if err == nil && tt.statusCode != 0 {
-					t.Errorf("ssh session exited with status code 0. expected to receive status code %d", tt.statusCode)
-					return
-				}
 				tt.errorAssertion(t, err)
 
-				//check that the exit code of the session matches the expected one
+				// check that the exit code of the session matches the expected one
 				if err != nil {
-					exitError, ok := trace.Unwrap(err).(*ssh.ExitError)
-					require.True(t, ok)
+					var exitError *ssh.ExitError
+					require.ErrorAs(t, trace.Unwrap(err), &exitError)
 					require.Equal(t, tt.statusCode, exitError.ExitStatus())
 				}
 
 				// Signal that the client has finished the interactive session.
 				doneCancel()
 			}()
-
-			for {
-				// Wait for either the session to finish or the timeout to occur
-				select {
-				case <-doneContext.Done():
-					return
-				case <-failedContext.Done():
-					require.NoError(t, failedContext.Err(), "Timed out waiting for session to complete")
-				}
-			}
 		})
 	}
 }
