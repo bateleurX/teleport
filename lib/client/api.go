@@ -1936,10 +1936,8 @@ func (tc *TeleportClient) runShell(nodeClient *NodeClient, sessToJoin *session.S
 		switch e := trace.Unwrap(err).(type) {
 		case *ssh.ExitError:
 			tc.ExitStatus = e.ExitStatus()
-			break
 		case *ssh.ExitMissingError:
 			tc.ExitStatus = 1
-			break
 		default:
 			break
 		}
